@@ -4,6 +4,7 @@
 
 1. 创建虚拟环境：
 ```bash
+cd back-end
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 .venv\Scripts\activate   # Windows
@@ -23,35 +24,20 @@ uvicorn app.main:app --reload
 
 1. 安装依赖：
 ```bash
-cd opcua-manager
-npm install
+cd front-end
+npm install -g pnpm 
+# 推荐使用pnpm
+pnpm install
 ```
 
 2. 启动开发服务器：
 ```bash
-npm run dev
+pnpm dev
 ```
 
 ## 开发说明
 
-### 目录结构
-
-```
-.
-├── app/                    # 后端代码
-│   ├── api/               # API 路由
-│   ├── core/              # 核心功能
-│   ├── db/                # 数据库模型和操作
-│   └── opcua/             # OPC UA 相关功能
-│
-└── opcua-manager/         # 前端代码
-    ├── src/
-    │   ├── app/          # Next.js 页面和组件
-    │   ├── components/   # 通用组件
-    │   ├── lib/         # 工具函数和 API 客户端
-    │   └── types/       # TypeScript 类型定义
-    └── public/          # 静态资源
-```
+Todo
 
 ## 许可证
 
