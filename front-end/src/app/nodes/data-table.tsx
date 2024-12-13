@@ -41,7 +41,14 @@ export function DataTable<TData, TValue>({
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
     const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+    const [mounted, setMounted] = useState(false);
     const router = useRouter();
+
+    // 客户端挂载检测
+    useEffect(() => {
+        setMounted(true);
+        return () => setMounted(false);
+    }, []);
 
     // 重置选择状态
     useEffect(() => {
@@ -93,21 +100,24 @@ export function DataTable<TData, TValue>({
 
     // 渲染删除按钮到指定容器
     const renderDeleteButton = () => {
+        if (!mounted) return null;
+        
         const container = document.getElementById('batch-delete-container');
         if (!container) return null;
 
+        const selectedCount = table.getFilteredSelectedRowModel().rows.length;
+        if (selectedCount === 0) return null;
+
         return createPortal(
-            table.getFilteredSelectedRowModel().rows.length > 0 && (
-                <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleBatchDelete}
-                    className="h-9"
-                >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    删除所选 ({table.getFilteredSelectedRowModel().rows.length})
-                </Button>
-            ),
+            <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBatchDelete}
+                className="h-9"
+            >
+                <Trash2 className="mr-2 h-4 w-4" />
+                删除所选 ({selectedCount})
+            </Button>,
             container
         );
     };

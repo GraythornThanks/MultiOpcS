@@ -35,13 +35,16 @@ export interface Node {
     id: number;
     name: string;
     node_id: string;
-    data_type: DataType;
-    access_level: AccessLevel;
+    data_type: string;
+    access_level: string;
     description?: string;
     initial_value?: string;
-    created_at: string;
+    value_change_type: string;
+    value_change_config: any;
+    value_precision?: number;
+    servers?: Server[];
+    created_at?: string;
     updated_at?: string;
-    servers: OPCUAServer[];
 }
 
 export interface OPCUAServer {

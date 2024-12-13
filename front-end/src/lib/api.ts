@@ -1,8 +1,13 @@
 import { CreateNodeDto, CreateServerDto, Node, OPCUAServer, UpdateNodeDto, UpdateServerDto } from '@/types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 const DEFAULT_TIMEOUT = 10000; // 10 seconds
+
+const defaultHeaders = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+};
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = DEFAULT_TIMEOUT): Promise<Response> {
     const controller = new AbortController();
@@ -11,7 +16,12 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout 
     try {
         const response = await fetch(url, {
             ...options,
+            headers: {
+                ...defaultHeaders,
+                ...options.headers,
+            },
             signal: controller.signal,
+            credentials: 'include',
         });
         clearTimeout(id);
         return response;
@@ -123,18 +133,35 @@ export async function getNode(id: number): Promise<Node | null> {
     }
 }
 
-export async function createNode(data: CreateNodeDto): Promise<Node> {
-    const response = await fetchWithTimeout(`${API_BASE_URL}/nodes/`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-    });
-    if (!response.ok) {
+export async function createNode(data: any) {
+    try {
+        console.log('创建节点请求数据:', data);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/nodes/`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            console.error('服务器响应错误:', {
+                status: response.status,
+                statusText: response.statusText,
+                errorData,
+            });
+            throw new Error(
+                errorData?.detail || 
+                `创建节点失败 (${response.status}: ${response.statusText})`
+            );
+        }
+
+        return response.json();
+    } catch (error) {
+        console.error('创建节点失败:', error);
+        if (error instanceof Error) {
+            throw new Error(error.message);
+        }
         throw new Error('创建节点失败');
     }
-    return response.json();
 }
 
 export async function updateNode(id: number, data: UpdateNodeDto): Promise<Node> {

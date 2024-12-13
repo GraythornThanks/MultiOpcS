@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Table, Enum, Float
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Table, Enum, Float, JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -41,6 +41,13 @@ class AccessLevel(enum.Enum):
     WRITE = "WRITE"       # 只写
     READWRITE = "READWRITE"  # 读写
 
+class ValueChangeType(enum.Enum):
+    NONE = "none"           # 不自动变化
+    LINEAR = "linear"       # 线性变化
+    DISCRETE = "discrete"   # 离散值变化
+    RANDOM = "random"       # 随机变化
+    CONDITIONAL = "conditional"  # 条件变化
+
 # 服务器和节点的关联表
 server_node_association = Table(
     'server_node_association',
@@ -78,6 +85,12 @@ class Node(Base):
     access_level = Column(Enum(AccessLevel))  # 访问级别
     description = Column(String, nullable=True)
     initial_value = Column(String)  # 存储为字符串的初始值
+    
+    # 新增字段
+    value_change_type = Column(Enum(ValueChangeType), default=ValueChangeType.NONE)  # 值变化类型
+    value_change_config = Column(JSON, nullable=True)  # 值变化配置
+    value_precision = Column(Integer, nullable=True)  # 数值精度（小数位数）
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
