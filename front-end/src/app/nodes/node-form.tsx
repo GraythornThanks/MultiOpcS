@@ -636,6 +636,11 @@ export function NodeForm({ nodeId }: NodeFormProps) {
                         setInitialNodeId(nodeData.node_id);
                         setInitialName(nodeData.name);
                         
+                        // 将后端返回的值变化类型转换为小写
+                        const valueChangeType = nodeData.value_change_type?.toLowerCase() || 'none';
+                        console.log('原始值变化类型:', nodeData.value_change_type);
+                        console.log('转换后的值变化类型:', valueChangeType);
+                        
                         // 设置表单初始值，包括服务器关联
                         const formData = {
                             name: nodeData.name || '',
@@ -644,7 +649,7 @@ export function NodeForm({ nodeId }: NodeFormProps) {
                             access_level: nodeData.access_level || 'READWRITE',
                             description: nodeData.description || '',
                             initial_value: nodeData.initial_value || '',
-                            value_change_type: nodeData.value_change_type || 'none',
+                            value_change_type: valueChangeType,
                             value_change_config: nodeData.value_change_config || null,
                             value_precision: nodeData.value_precision ?? 2,
                             serverIds: nodeData.servers?.map(server => server.id) || [],
@@ -670,16 +675,12 @@ export function NodeForm({ nodeId }: NodeFormProps) {
         }
     }, [nodeId, form, router, initialNodeId]);
 
-    // 监听数据类型变化，重置初始值
+    // 监听值变化类型的变化
     useEffect(() => {
         const subscription = form.watch((value, { name }) => {
-            if (name === 'data_type') {
-                form.setValue('initial_value', '');
-                setInitialValueError(null);
-            }
-            // 监听值变化类型，重置配置
             if (name === 'value_change_type') {
-                form.setValue('value_change_config', getDefaultConfig(value.value_change_type as string));
+                console.log('值变化类型改变:', value.value_change_type);
+                form.setValue('value_change_config', getDefaultConfig(value.value_change_type));
             }
         });
         return () => subscription.unsubscribe();
@@ -1025,6 +1026,38 @@ export function NodeForm({ nodeId }: NodeFormProps) {
         />
     );
 
+    // 渲染值变化类型选择器
+    const renderValueChangeTypeSelect = () => (
+        <FormField
+            control={form.control}
+            name="value_change_type"
+            render={({ field }) => (
+                <FormItem>
+                    <FormLabel>值变化类型</FormLabel>
+                    <Select 
+                        onValueChange={field.onChange} 
+                        defaultValue={field.value}
+                        value={field.value}
+                    >
+                        <FormControl>
+                            <SelectTrigger>
+                                <SelectValue placeholder="选择值变化类型" />
+                            </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                            {valueChangeOptions.map((type) => (
+                                <SelectItem key={type.value} value={type.value}>
+                                    {type.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <FormMessage />
+                </FormItem>
+            )}
+        />
+    );
+
     return (
         <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
@@ -1161,36 +1194,7 @@ export function NodeForm({ nodeId }: NodeFormProps) {
                     )}
                 />
 
-                <FormField
-                    control={form.control}
-                    name="value_change_type"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>值变化类型</FormLabel>
-                            <Select
-                                onValueChange={field.onChange}
-                                defaultValue={field.value}
-                            >
-                                <FormControl>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="选择值变化类型" />
-                                    </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                    {valueChangeOptions.map((type) => (
-                                        <SelectItem
-                                            key={type.value}
-                                            value={type.value}
-                                        >
-                                            {type.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
+                {renderValueChangeTypeSelect()}
 
                 {renderValueChangeConfig()}
 

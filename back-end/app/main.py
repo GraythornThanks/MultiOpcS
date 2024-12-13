@@ -20,137 +20,24 @@ from contextlib import asynccontextmanager
 models.Base.metadata.create_all(bind=engine)
 
 # 全局变量
-shutdown_requested = False  # 使用布尔标志而不是Event
-
-# 存储活动的 OPC UA 客户端连接
-active_clients = {}
-
-# 存储活动的 OPC UA 服务器实例
 active_servers: Dict[int, Server] = {}
-
-# 存储活动的 WebSocket 连接
 active_connections: Set[WebSocket] = set()
-
-async def cleanup_connections():
-    """清理所有活动的 OPC UA 客户端连接"""
-    for client in active_clients.values():
-        if client:
-            try:
-                await client.disconnect()
-            except Exception as e:
-                print(f"断开连接时出错: {e}")
-    active_clients.clear()
-
-async def cleanup_servers():
-    """清理所有活动的 OPC UA 服务器"""
-    if not active_servers:  # 如果没有活动的服务器，直接返回
-        print("[INFO] 没有活动的服务器需要清理")
-        return
-        
-    try:
-        # 获取数据库会话
-        db = next(get_db())
-        
-        # 只停止活动的服务器
-        for server_id, server in active_servers.items():
-            try:
-                await server.stop()
-                db_server = db.query(models.OPCUAServer).filter(models.OPCUAServer.id == server_id).first()
-                if db_server:
-                    db_server.status = models.ServerStatus.STOPPED
-                    db_server.endpoint = None
-            except Exception as e:
-                print(f"[ERROR] 停止服务器 {server_id} 时出错: {e}")
-        
-        # 只更新活动服务器的状态
-        server_ids = list(active_servers.keys())
-        if server_ids:
-            servers = db.query(models.OPCUAServer).filter(
-                models.OPCUAServer.id.in_(server_ids)
-            ).all()
-            for server in servers:
-                server.status = models.ServerStatus.STOPPED
-                server.endpoint = None
-            
-            db.commit()
-        
-        active_servers.clear()
-        
-    except Exception as e:
-        print(f"[ERROR] 清理服务器时出错: {e}")
-
-async def graceful_shutdown():
-    """优雅关闭"""
-    if active_servers or active_clients:
-        print("\n[INFO] 正在关闭活动的 OPC UA 连接和服务器...")
-        
-        try:
-            if active_clients:
-                await cleanup_connections()
-            if active_servers:
-                await cleanup_servers()
-            
-            # 给异步操作一些时间完成
-            await asyncio.sleep(1)
-        except Exception as e:
-            print(f"[ERROR] 清理过程中出错: {e}")
-    else:
-        print("\n[INFO] 没有活动的连接需要清理")
-
-def signal_handler(sig, frame):
-    """处理 Ctrl+C 信号"""
-    global shutdown_requested
-    print("\n正在关闭所有 OPC UA 连接和服务器...")
-    shutdown_requested = True
-    if not asyncio.get_event_loop().is_running():
-        try:
-            sync_cleanup()
-        finally:
-            sys.exit(0)
-
-def sync_cleanup():
-    """同步清理函数"""
-    try:
-        # 创建新的事件循环
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        # 运行清理任务
-        loop.run_until_complete(cleanup_connections())
-        loop.run_until_complete(cleanup_servers())
-        
-        # 关闭事件循环
-        loop.close()
-        
-    except RuntimeError as e:
-        if "Cannot run the event loop while another loop is running" in str(e):
-            print("清理操作将在主事件循环中进行")
-        else:
-            print(f"清理连接和服务器时出错: {e}")
-    except Exception as e:
-        print(f"清理连接和服务器时出错: {e}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    应用程序生命周期管理
-    """
-    # 启动时的操作
+    """应用程序生命周期管理"""
+    print("[INFO] 正在启动应用...")
     try:
         # 获取数据库会话
         db = next(get_db())
         
-        # 只更新非停止状态的服务器
-        servers = db.query(models.OPCUAServer).filter(
-            models.OPCUAServer.status != models.ServerStatus.STOPPED
-        ).all()
-        
-        if servers:
-            print("[INFO] 重置非停止状态的服务器状态")
-            for server in servers:
-                server.status = models.ServerStatus.STOPPED
-                server.endpoint = None
-            db.commit()
+        # 重置所有服务器状态为已停止
+        servers = db.query(models.OPCUAServer).all()
+        for server in servers:
+            server.status = models.ServerStatus.STOPPED
+            server.endpoint = None
+        db.commit()
+        print("[INFO] 已重置所有服务器状态为已停止")
         
     except Exception as e:
         print(f"[ERROR] 启动初始化时出错: {e}")
@@ -159,69 +46,74 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # 关闭时的操作
-    if active_servers:  # 只在有活动服务器时执行清理
-        try:
-            await graceful_shutdown()
-        except Exception as e:
-            print(f"[ERROR] 关闭时出错: {e}")
-
-# 注册信号处理器
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
+    print("[INFO] 正在关闭应用...")
+    try:
+        if active_servers:
+            # 获取数据库会话
+            db = next(get_db())
+            
+            # 更新所有服务器状态
+            servers = db.query(models.OPCUAServer).all()
+            for server in servers:
+                server.status = models.ServerStatus.STOPPED
+                server.endpoint = None
+            db.commit()
+            
+            # 清空活动服务器字典
+            active_servers.clear()
+            print("[INFO] 已强制关闭所有服务器")
+    except Exception as e:
+        print(f"[ERROR] 关闭时出错: {e}")
+    finally:
+        print("[INFO] 应用关闭完成")
 
 # 创建 FastAPI 应用实例
 app = FastAPI(
     title="OPCUA Manager",
-    description="""
-    OPCUA Manager API 用于管理多个 OPCUA 服务器和节点。
-    
-    主要功能:
-    * 管理多个 OPCUA 服务器
-    * 管理节点信息
-    * 服务器和节点的关联管理
-    """,
+    description="OPCUA Manager API 用于管理多个 OPCUA 服务器和节点。",
     version="1.0.0",
-    lifespan=lifespan,
-    contact={
-        "name": "OPCUA Manager Team",
-    },
-    openapi_tags=[
-        {
-            "name": "nodes",
-            "description": "节点管理操作，包括创建、读取、更新和删除节点",
-        },
-        {
-            "name": "servers",
-            "description": "OPCUA服务器管理操作，包括创建、读取、更新和删除服务器",
-        },
-        {
-            "name": "associations",
-            "description": "服务器和节点的关联管理",
-        },
-    ]
+    lifespan=lifespan
 )
 
 # 配置 CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # 允许的前端源
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
-    allow_methods=["*"],  # 允许所有 HTTP 方法
-    allow_headers=["*"],  # 允许所有请求头
-    expose_headers=["*"],  # 暴露所有响应头
-    max_age=3600,  # 预检请求的缓存时间（秒）
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
-@app.middleware("http")
-async def shutdown_middleware(request, call_next):
-    """中间件用于检查是否需要关闭"""
-    if shutdown_requested:
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "Server is shutting down"}
-        )
-    return await call_next(request)
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时的初始化工作"""
+    print("[INFO] 应用启动...")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭时的清理工作"""
+    print("[INFO] 正在执行应用关闭事件...")
+    try:
+        if active_servers:
+            # 获取数据库会话
+            db = next(get_db())
+            
+            # 更新所有服务器状态
+            servers = db.query(models.OPCUAServer).all()
+            for server in servers:
+                server.status = models.ServerStatus.STOPPED
+                server.endpoint = None
+            db.commit()
+            
+            # 清空活动服务器字典
+            active_servers.clear()
+            print("[INFO] 已强制关闭所有服务器")
+    except Exception as e:
+        print(f"[ERROR] 关闭清理时出错: {e}")
+    finally:
+        print("[INFO] 应用关闭完成")
 
 # Node CRUD operations
 @app.get("/nodes/", response_model=List[schemas.Node])
@@ -302,7 +194,7 @@ def parse_node_pattern(name: str, node_id: str) -> List[Tuple[str, str]]:
         start = int(name_match.group(1))
         end = int(name_match.group(2)) if name_match.group(2) else start
     else:
-        # 如果名称中没有占位符，使用节点ID中的范围
+        # 如果称中没有占位符，使用节点ID中的范围
         start = int(node_id_match.group(1))
         end = int(node_id_match.group(2)) if node_id_match.group(2) else start
         
@@ -331,7 +223,7 @@ def create_node(node: schemas.NodeCreate, db: Session = Depends(get_db)):
             if not is_valid:
                 raise HTTPException(status_code=400, detail=f"初始值无效: {error_message}")
         
-        # 验证值变化配置
+        # 验证��变化配置
         if node.value_change_type != models.ValueChangeType.NONE and not node.value_change_config:
             raise HTTPException(status_code=400, detail="值变化类型需要配置")
         
@@ -398,7 +290,7 @@ def update_node(node_id: int, node: schemas.NodeUpdate, db: Session = Depends(ge
     # 更新节点属性
     update_data = node.dict(exclude_unset=True)
     
-    # ���果包含serverIds，更新服务器关联
+    # 果包含serverIds，更新服务器关联
     if "serverIds" in update_data:
         serverIds = update_data.pop("serverIds")
         if serverIds is not None:
@@ -540,7 +432,7 @@ async def setup_server_nodes(server: Server, db_server: models.OPCUAServer):
         try:
             var_name = f"{node.name}_{node.id}"
             
-            # 根据数据类型��建变量
+            # 根据数据类型建变量
             if node.data_type == "Boolean":
                 var = await objects.add_variable(ua.NodeId(var_name), node.name, False)
             elif node.data_type == "Int32":
@@ -719,7 +611,7 @@ async def start_server(server_id: int, db: Session = Depends(get_db)):
         
         return {"status": "success", "message": "Server started", "endpoint": endpoint}
     except Exception as e:
-        error_msg = f"启动服务器 '{server.name}' 失��: {str(e)}"
+        error_msg = f"启动服务器 '{server.name}' 失败: {str(e)}"
         print(f"[ERROR] {error_msg}")
         # 发生错误更新状态
         server.status = models.ServerStatus.ERROR
@@ -747,7 +639,7 @@ async def stop_server(server_id: int, db: Session = Depends(get_db)):
     try:
         await opc_server.stop()
         active_servers.pop(server_id)
-        print(f"[INFO] 服务器 '{server.name}' 止成功! (地址: {server.endpoint})")
+        print(f"[INFO] 服务器 '{server.name}' 停止成功! (地址: {server.endpoint})")
         
         server.status = models.ServerStatus.STOPPED
         db.commit()
@@ -817,49 +709,3 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         "running_servers": running_servers,
         "total_nodes": total_nodes,
     } 
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """应用关闭时的清理工作"""
-    try:
-        # 停止所有活动的服务器
-        db = next(get_db())
-        for server_id, server in list(active_servers.items()):
-            try:
-                await server.stop()
-                db_server = db.query(models.OPCUAServer).filter(models.OPCUAServer.id == server_id).first()
-                if db_server:
-                    db_server.status = models.ServerStatus.STOPPED
-                    db_server.endpoint = None
-            except Exception as e:
-                print(f"停止服务器 {server_id} 时出错: {e}")
-        
-        # 更新数据库中所有服务器状态
-        servers = db.query(models.OPCUAServer).all()
-        for server in servers:
-            server.status = models.ServerStatus.STOPPED
-            server.endpoint = None
-        
-        db.commit()
-        active_servers.clear()
-        
-        # 清理 WebSocket 连接
-        for connection in list(active_connections):
-            try:
-                await connection.close()
-            except Exception:
-                pass
-        active_connections.clear()
-        
-        # 清理客户端连接
-        for client in list(active_clients.values()):
-            if client:
-                try:
-                    await client.disconnect()
-                except Exception as e:
-                    print(f"断开客户端连接时出错: {e}")
-        active_clients.clear()
-        
-    except Exception as e:
-        print(f"关闭清理时出错: {e}")
-        db.rollback() 

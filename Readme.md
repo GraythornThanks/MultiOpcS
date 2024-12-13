@@ -13,6 +13,7 @@ source .venv/bin/activate  # Linux/Mac
 2. 安装依赖：
 ```bash
 pip install -r requirements.txt
+pip install 'uvicorn[standard]' # uvicorn 另外安装标准版
 ```
 
 3. 启动后端服务：
