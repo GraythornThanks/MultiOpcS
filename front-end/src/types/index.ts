@@ -39,12 +39,10 @@ export interface Node {
     access_level: string;
     description?: string;
     initial_value?: string;
-    value_change_type: string;
-    value_change_config: any;
+    value_change_type: 'none' | 'linear' | 'discrete' | 'random' | 'conditional';
+    value_change_config?: any;
     value_precision?: number;
-    servers?: Server[];
-    created_at?: string;
-    updated_at?: string;
+    servers?: { id: number; name: string }[];
 }
 
 export interface OPCUAServer {
@@ -76,12 +74,16 @@ export interface CreateServerDto {
 }
 
 export interface UpdateNodeDto {
-    name?: string;
-    node_id?: string;
-    data_type?: DataType;
-    access_level?: AccessLevel;
+    name: string;
+    node_id: string;
+    data_type: string;
+    access_level: string;
     description?: string;
     initial_value?: string;
+    value_change_type: 'none' | 'linear' | 'discrete' | 'random' | 'conditional';
+    value_change_config?: any;
+    value_precision?: number;
+    serverIds: number[];
 }
 
 export interface UpdateServerDto {

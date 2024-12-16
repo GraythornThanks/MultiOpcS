@@ -223,7 +223,7 @@ def create_node(node: schemas.NodeCreate, db: Session = Depends(get_db)):
             if not is_valid:
                 raise HTTPException(status_code=400, detail=f"初始值无效: {error_message}")
         
-        # 验证��变化配置
+        # 验证值变化配置
         if node.value_change_type != models.ValueChangeType.NONE and not node.value_change_config:
             raise HTTPException(status_code=400, detail="值变化类型需要配置")
         

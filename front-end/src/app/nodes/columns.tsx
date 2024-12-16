@@ -1,31 +1,19 @@
 'use client';
 
-import { ColumnDef, Row } from '@tanstack/react-table';
+import { ColumnDef } from '@tanstack/react-table';
 import { Node } from '@/types';
-import { Button } from '@/components/ui/button';
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import Link from 'next/link';
-import { deleteNode } from '@/lib/api';
-import { useRouter } from 'next/navigation';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DataTableColumnHeader } from './data-table-column-header';
+import { DataTableRowActions } from './data-table-row-actions';
+import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
 
 export const columns: ColumnDef<Node>[] = [
     {
         id: 'select',
         header: ({ table }) => (
             <Checkbox
-                checked={
-                    table.getIsAllPageRowsSelected() ||
-                    (table.getIsSomePageRowsSelected() && 'indeterminate')
-                }
+                checked={table.getIsAllPageRowsSelected()}
                 onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
                 aria-label="全选"
             />
@@ -34,7 +22,7 @@ export const columns: ColumnDef<Node>[] = [
             <Checkbox
                 checked={row.getIsSelected()}
                 onCheckedChange={(value) => row.toggleSelected(!!value)}
-                aria-label="选择节点"
+                aria-label="选择行"
             />
         ),
         enableSorting: false,
@@ -42,64 +30,68 @@ export const columns: ColumnDef<Node>[] = [
     },
     {
         accessorKey: 'name',
-        header: '节点名称',
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="节点名称" />
+        ),
     },
     {
         accessorKey: 'node_id',
-        header: '节点ID',
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="节点ID" />
+        ),
     },
     {
         accessorKey: 'data_type',
-        header: '数据类型',
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="数据类型" />
+        ),
     },
     {
         accessorKey: 'access_level',
-        header: '访问级别',
-        cell: ({ row }: { row: Row<Node> }) => {
-            const access = row.getValue('access_level') as string;
-            return (
-                <Badge variant="outline">
-                    {access === 'read' ? '只读' : access === 'write' ? '只写' : '读写'}
-                </Badge>
-            );
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="访问级别" />
+        ),
+        cell: ({ row }) => {
+            const level = row.getValue('access_level') as string;
+            const levelMap: { [key: string]: { label: string; variant: 'default' | 'secondary' | 'destructive' } } = {
+                READ: { label: '只读', variant: 'secondary' },
+                WRITE: { label: '只写', variant: 'destructive' },
+                READWRITE: { label: '读写', variant: 'default' },
+            };
+            const { label, variant } = levelMap[level] || { label: level, variant: 'default' };
+            return <Badge variant={variant}>{label}</Badge>;
+        },
+    },
+    {
+        accessorKey: 'value_change_type',
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="值变化类型" />
+        ),
+        cell: ({ row }) => {
+            const type = (row.getValue('value_change_type') as string)?.toLowerCase();
+            const typeMap: { [key: string]: string } = {
+                none: '不自动变化',
+                linear: '线性变化',
+                discrete: '离散值变化',
+                random: '随机变化',
+                conditional: '条件变化',
+            };
+            return typeMap[type] || type;
+        },
+    },
+    {
+        accessorKey: 'created_at',
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="创建时间" />
+        ),
+        cell: ({ row }) => {
+            const date = row.getValue('created_at') as string;
+            if (!date) return null;
+            return format(new Date(date), 'yyyy-MM-dd HH:mm:ss');
         },
     },
     {
         id: 'actions',
-        cell: ({ row }: { row: Row<Node> }) => {
-            const node = row.original;
-            const router = useRouter();
-
-            const handleDelete = async () => {
-                if (confirm('确定要删除这个节点吗？')) {
-                    await deleteNode(node.id);
-                    router.refresh();
-                }
-            };
-
-            return (
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">打开菜单</span>
-                            <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>操作</DropdownMenuLabel>
-                        <DropdownMenuItem asChild>
-                            <Link href={`/nodes/${node.id}/edit`}>
-                                <Pencil className="mr-2 h-4 w-4" />
-                                编辑
-                            </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleDelete}>
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            删除
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            );
-        },
+        cell: ({ row }) => <DataTableRowActions row={row} />,
     },
 ]; 

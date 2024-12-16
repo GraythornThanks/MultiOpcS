@@ -31,7 +31,14 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardFooter,
+    CardHeader,
+    CardTitle,
+} from "@/components/ui/card";
 
 interface Server {
     id: number;
@@ -69,7 +76,7 @@ type AccessLevel = typeof accessLevels[number]['value'];
 const valueChangeOptions = [
     { value: 'none', label: '不自动变化' },
     { value: 'linear', label: '线性变化' },
-    { value: 'discrete', label: '离散值变化' },
+    { value: 'discrete', label: '离散值变��' },
     { value: 'random', label: '随机变化' },
     { value: 'conditional', label: '条件变化' },
 ];
@@ -108,7 +115,7 @@ const isValidNodeId = (value: string) => {
     return nodeIdPattern.test(value);
 };
 
-// 根据数据类型验证初始值
+// 根据数据类型验证点初始值
 const validateInitialValue = (value: string, dataType: string): { isValid: boolean; message?: string } => {
     if (!value) return { isValid: true };
 
@@ -139,7 +146,7 @@ const validateInitialValue = (value: string, dataType: string): { isValid: boole
             case 'INT64':
                 const int64Val = BigInt(value);
                 if (int64Val < BigInt('-9223372036854775808') || int64Val > BigInt('9223372036854775807')) {
-                    return { isValid: false, message: "INT64 的值超出范围" };
+                    return { isValid: false, message: "INT64 的值超范围" };
                 }
                 break;
 
@@ -174,7 +181,7 @@ const validateInitialValue = (value: string, dataType: string): { isValid: boole
             case 'DOUBLE':
                 const floatVal = parseFloat(value);
                 if (isNaN(floatVal)) {
-                    return { isValid: false, message: "请输入有效的浮点数" };
+                    return { isValid: false, message: "��输入有效的浮点数" };
                 }
                 break;
 
@@ -464,54 +471,207 @@ function RandomChangeConfig({ form }: { form: any }) {
     );
 }
 
+// 获取默认配置
+const getDefaultConfig = (type: string, dataType: string) => {
+    switch (type) {
+        case 'linear':
+            return {
+                min_value: 0,
+                max_value: 100,
+                update_interval: 1000,
+                step_size: 1,
+                random_interval: false,
+                random_step: false,
+                reset_on_bounds: true,
+            };
+            
+        case 'discrete':
+            return {
+                values: [],
+                update_interval: 1000,
+                random_interval: false,
+            };
+            
+        case 'random':
+            return {
+                min_value: 0,
+                max_value: 100,
+                update_interval: 1000,
+                random_interval: false,
+            };
+            
+        case 'conditional':
+            if (dataType === 'DATETIME') {
+                return {
+                    trigger_node_id: '',
+                    trigger_value: '',
+                    change_value: 'CURRENT_TIME', // 使用CURRENT_TIME关键字
+                };
+            }
+            return {
+                trigger_node_id: '',
+                trigger_value: '',
+                change_value: '',
+            };
+            
+        default:
+            return null;
+    }
+};
+
 // 条件变化配置表单
 function ConditionalChangeConfig({ form }: { form: any }) {
+    const dataType = form.watch('data_type');
+    const isDateTime = dataType === 'DATETIME';
+    
+    useEffect(() => {
+        if (isDateTime) {
+            form.setValue('value_change_config.change_value', 'CURRENT_TIME');
+        }
+    }, [isDateTime, form]);
+
+    // 验证触发节点ID的格式
+    const validateTriggerNodeId = (value: string) => {
+        if (!value) return "触发节点ID不能为空";
+        if (!isValidNodeId(value)) {
+            return "触发节点ID格式无效，正确格式如：ns=2;s=node1";
+        }
+        return "";
+    };
+    
     return (
-        <Card>
-            <CardContent className="pt-6 space-y-4">
-                <FormField
-                    control={form.control}
-                    name="value_change_config.trigger_node_id"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>触发节点ID</FormLabel>
-                            <FormControl>
-                                <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-                <FormField
-                    control={form.control}
-                    name="value_change_config.trigger_value"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>触发值</FormLabel>
-                            <FormControl>
-                                <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-                <FormField
-                    control={form.control}
-                    name="value_change_config.change_value"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>变化值</FormLabel>
-                            <FormControl>
-                                <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-            </CardContent>
-        </Card>
+        <div className="space-y-4 border rounded-lg p-4">
+            <FormField
+                control={form.control}
+                name="value_change_config.trigger_node_id"
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>触发节点ID</FormLabel>
+                        <FormControl>
+                            <Input 
+                                {...field} 
+                                placeholder="格式: ns=2;s=node1"
+                                onChange={(e) => {
+                                    field.onChange(e);
+                                    const error = validateTriggerNodeId(e.target.value);
+                                    if (error) {
+                                        form.setError('value_change_config.trigger_node_id', {
+                                            type: 'manual',
+                                            message: error
+                                        });
+                                    } else {
+                                        form.clearErrors('value_change_config.trigger_node_id');
+                                    }
+                                }}
+                            />
+                        </FormControl>
+                        <FormDescription>
+                            示例格式：ns=2;s=node1 或 ns=2;i=1234
+                        </FormDescription>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
+            <FormField
+                control={form.control}
+                name="value_change_config.trigger_value"
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>触发值</FormLabel>
+                        <FormControl>
+                            <Input {...field} placeholder="输入触发条件的值" />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
+            <FormField
+                control={form.control}
+                name="value_change_config.change_value"
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>变化值</FormLabel>
+                        <FormControl>
+                            {isDateTime ? (
+                                <div className="text-sm text-muted-foreground p-2 bg-gray-50 rounded-md">
+                                    将使用发时的当前时间
+                                </div>
+                            ) : (
+                                <Input {...field} placeholder="输入固定值或计算表达式" />
+                            )}
+                        </FormControl>
+                        {!isDateTime && (
+                            <div className="text-sm text-muted-foreground mt-2">
+                                <div className="mb-2">支持以下计算表达式：</div>
+                                <div className="bg-gray-50 p-3 rounded-md space-y-3">
+                                    <div>
+                                        <div className="font-medium mb-1">可用变量：</div>
+                                        <ul className="list-disc list-inside space-y-1">
+                                            <li><code className="bg-gray-100 px-1 rounded">trigger_value</code> - 触发节点的值</li>
+                                            <li><code className="bg-gray-100 px-1 rounded">current_value</code> - 当前节点的值</li>
+                                        </ul>
+                                    </div>
+                                    <div>
+                                        <div className="font-medium mb-1">支持的运算：</div>
+                                        <ul className="list-disc list-inside space-y-1">
+                                            <li><code className="bg-gray-100 px-1 rounded">+</code> 加法</li>
+                                            <li><code className="bg-gray-100 px-1 rounded">-</code> 减法</li>
+                                            <li><code className="bg-gray-100 px-1 rounded">*</code> 乘法</li>
+                                            <li><code className="bg-gray-100 px-1 rounded">/</code> 除法</li>
+                                            <li><code className="bg-gray-100 px-1 rounded">%</code> 取余</li>
+                                            <li><code className="bg-gray-100 px-1 rounded">**</code> 幂运算</li>
+                                        </ul>
+                                    </div>
+                                    <div>
+                                        <div className="font-medium mb-1">示例：</div>
+                                        <ul className="list-disc list-inside space-y-1">
+                                            <li><code className="bg-gray-100 px-1 rounded">trigger_value + 10</code> - 触发值加10</li>
+                                            <li><code className="bg-gray-100 px-1 rounded">current_value * 2</code> - 当前值乘2</li>
+                                            <li><code className="bg-gray-100 px-1 rounded">trigger_value * 0.5 + current_value</code> - 触发值的一半加上当前值</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
+        </div>
     );
 }
+
+// 根据数类型获可用的变化类型选项
+const getValueChangeOptions = (dataType: string) => {
+    const baseOption = { value: 'none', label: '不自动变化' };
+    const conditionalOption = { value: 'conditional', label: '条件变化' };
+    const discreteOption = { value: 'discrete', label: '离散值变化' };
+    const linearOption = { value: 'linear', label: '线性变化' };
+    const randomOption = { value: 'random', label: '随机变化' };
+
+    switch (dataType) {
+        case 'BOOL':
+        case 'DATETIME':
+            return [baseOption, conditionalOption];
+            
+        case 'CHAR':
+        case 'STRING':
+        case 'BYTESTRING':
+            return [baseOption, discreteOption, conditionalOption];
+            
+        case 'UINT16':
+        case 'UINT32':
+        case 'UINT64':
+        case 'INT32':
+        case 'INT64':
+        case 'FLOAT':
+        case 'DOUBLE':
+            return [baseOption, linearOption, discreteOption, randomOption, conditionalOption];
+            
+        default:
+            return [baseOption];
+    }
+};
 
 export function NodeForm({ nodeId }: NodeFormProps) {
     const router = useRouter();
@@ -526,6 +686,25 @@ export function NodeForm({ nodeId }: NodeFormProps) {
     const [servers, setServers] = useState<Server[]>([]);
     const [isBatchMode, setIsBatchMode] = useState(false);
     const [batchCount, setBatchCount] = useState(1);
+
+    // 获取数据类型的示例值
+    const getInitialValuePlaceholder = (dataType: string): string => {
+        switch (dataType) {
+            case 'BOOL': return '请选择 true 或 false';
+            case 'CHAR': return '单个字符';
+            case 'INT32': return '-2147483648 到 2147483647';
+            case 'INT64': return '-9223372036854775808 到 9223372036854775807';
+            case 'UINT16': return '0 到 65535';
+            case 'UINT32': return '0 到 4294967295';
+            case 'UINT64': return '0 到 18446744073709551615';
+            case 'FLOAT': return '单精度浮点数，如: 3.14';
+            case 'DOUBLE': return '双精度浮点数，如: 3.14159';
+            case 'STRING': return '文本字符串';
+            case 'DATETIME': return '格式: YYYY-MM-DDThh:mm:ss.sssZ (例如: 2024-01-01T12:00:00.000Z)';
+            case 'BYTESTRING': return '字节字符串';
+            default: return '';
+        }
+    };
 
     // 获取所有现有节点的信息
     useEffect(() => {
@@ -544,7 +723,7 @@ export function NodeForm({ nodeId }: NodeFormProps) {
         fetchExistingNodes();
     }, []);
 
-    // 加载服务器列表
+    // 加载服务器表
     useEffect(() => {
         const fetchServers = async () => {
             try {
@@ -554,7 +733,7 @@ export function NodeForm({ nodeId }: NodeFormProps) {
                 setServers(data);
             } catch (error) {
                 console.error('加载服务器列表失败:', error);
-                toast.error('加载服务器列表失败');
+                toast.error('加载服���器列表失败');
             }
         };
         fetchServers();
@@ -680,91 +859,11 @@ export function NodeForm({ nodeId }: NodeFormProps) {
         const subscription = form.watch((value, { name }) => {
             if (name === 'value_change_type') {
                 console.log('值变化类型改变:', value.value_change_type);
-                form.setValue('value_change_config', getDefaultConfig(value.value_change_type));
+                form.setValue('value_change_config', getDefaultConfig(value.value_change_type, form.watch('data_type')));
             }
         });
         return () => subscription.unsubscribe();
     }, [form]);
-
-    // 获取默认配置
-    const getDefaultConfig = (type: string) => {
-        switch (type) {
-            case 'linear':
-                return {
-                    min_value: 0,
-                    max_value: 100,
-                    update_interval: 1000,
-                    step_size: 1,
-                    random_interval: false,
-                    random_step: false,
-                    reset_on_bounds: true,
-                };
-            case 'discrete':
-                return {
-                    values: [],
-                    update_interval: 1000,
-                    random_interval: false,
-                };
-            case 'random':
-                return {
-                    min_value: 0,
-                    max_value: 100,
-                    update_interval: 1000,
-                    random_interval: false,
-                };
-            case 'conditional':
-                return {
-                    trigger_node_id: '',
-                    trigger_value: '',
-                    change_value: '',
-                };
-            default:
-                return null;
-        }
-    };
-
-    // 渲值变化配置表单
-    const renderValueChangeConfig = () => {
-        const type = form.watch('value_change_type');
-        const dataType = form.watch('data_type');
-
-        // 只有数值类型才显示精度设置
-        const showPrecision = ['FLOAT', 'DOUBLE'].includes(dataType);
-
-        if (type === 'none') {
-            return null;
-        }
-
-        return (
-            <div className="space-y-4">
-                {showPrecision && (
-                    <FormField
-                        control={form.control}
-                        name="value_precision"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>数值精度 (小数位数)</FormLabel>
-                                <FormControl>
-                                    <Input
-                                        type="number"
-                                        min={0}
-                                        max={10}
-                                        {...field}
-                                        onChange={e => field.onChange(parseInt(e.target.value))}
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                )}
-                {type === 'linear' && <LinearChangeConfig form={form} />}
-                {type === 'discrete' && <DiscreteChangeConfig form={form} />}
-                {type === 'random' && <RandomChangeConfig form={form} />}
-                {type === 'conditional' && <ConditionalChangeConfig form={form} />}
-            </div>
-        );
-    };
 
     // 处理服务器选择变化
     const handleServerChange = (serverId: number, checked: boolean) => {
@@ -807,139 +906,17 @@ export function NodeForm({ nodeId }: NodeFormProps) {
         );
     };
 
-    const onSubmit = async (data: z.infer<typeof formSchema>) => {
-        try {
-            setIsSubmitting(true);
-            
-            // 准备提交数据
-            const submitData = {
-                ...data,
-                // 如果是无变化类型，清空配置
-                value_change_type: data.value_change_type,
-                value_change_config: data.value_change_type === 'none' ? null : {
-                    ...data.value_change_config,
-                    // 确保数值字段为数值类型
-                    ...(data.value_change_type === 'linear' && {
-                        min_value: Number(data.value_change_config?.min_value),
-                        max_value: Number(data.value_change_config?.max_value),
-                        update_interval: Number(data.value_change_config?.update_interval),
-                        step_size: Number(data.value_change_config?.step_size),
-                    }),
-                    ...(data.value_change_type === 'random' && {
-                        min_value: Number(data.value_change_config?.min_value),
-                        max_value: Number(data.value_change_config?.max_value),
-                        update_interval: Number(data.value_change_config?.update_interval),
-                    }),
-                    ...(data.value_change_type === 'discrete' && {
-                        update_interval: Number(data.value_change_config?.update_interval),
-                        values: Array.isArray(data.value_change_config?.values) 
-                            ? data.value_change_config.values.filter(v => v.trim() !== '')
-                            : []
-                    })
-                },
-                // 如果不是浮点数类型，清空精度设置
-                value_precision: ['FLOAT', 'DOUBLE'].includes(data.data_type) ? data.value_precision : null,
-                // 确保 serverIds 是数组
-                serverIds: Array.from(tempSelectedServers)
-            };
-
-            console.log('提交数据:', submitData);
-
-            if (nodeId) {
-                // 更新节点
-                await updateNode(nodeId, submitData);
-                toast.success('节点更新成功');
-            } else {
-                // 创建节点
-                if (isBatchMode) {
-                    // 批量创建逻辑
-                    const { name, node_id } = submitData;
-                    const namePattern = parsePlaceholderPattern(name);
-                    const nodeIdPattern = parsePlaceholderPattern(node_id);
-
-                    if (!namePattern.hasPlaceholder && !nodeIdPattern.hasPlaceholder) {
-                        throw new Error('批量创建模式下，节点名称或节点ID必须包含占位符 {n}');
-                    }
-
-                    const names = generateBatchNames(name, batchCount);
-                    const nodeIds = generateBatchNames(node_id, batchCount);
-
-                    const createPromises = names.map((name, index) => {
-                        const batchData = {
-                            ...submitData,
-                            name,
-                            node_id: nodeIds[index],
-                        };
-                        return createNode(batchData);
-                    });
-
-                    await Promise.all(createPromises);
-                    toast.success(`成功创建 ${batchCount} 个节点`);
-                } else {
-                    // 单个节点创建
-                    await createNode(submitData);
-                    toast.success('节点创建成功');
-                }
-            }
-
-            router.refresh();
-            router.push('/nodes');
-        } catch (error) {
-            console.error('保存节点失败:', error);
-            toast.error(error instanceof Error ? error.message : '保存节点失败');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    // 获取数据类型的示例值
-    const getInitialValuePlaceholder = (dataType: string): string => {
-        switch (dataType) {
-            case 'BOOL': return '请选择 true 或 false';
-            case 'CHAR': return '单个字符';
-            case 'INT32': return '-2147483648 到 2147483647';
-            case 'INT64': return '-9223372036854775808 到 9223372036854775807';
-            case 'UINT16': return '0 到 65535';
-            case 'UINT32': return '0 到 4294967295';
-            case 'UINT64': return '0 到 18446744073709551615';
-            case 'FLOAT': return '单精度浮点数，如: 3.14';
-            case 'DOUBLE': return '双精度浮点数，如: 3.14159';
-            case 'STRING': return '文本字符串';
-            case 'DATETIME': return '格式: YYYY-MM-DDThh:mm:ss.sssZ (例如: 2024-01-01T12:00:00.000Z)';
-            case 'BYTESTRING': return '字节字符串';
-            default: return '';
-        }
-    };
-
-    // 检查表单是否有效
-    const isFormValid = () => {
-        const values = form.getValues();
-        const formState = form.getFieldState('name');
-        const nodeIdState = form.getFieldState('node_id');
-        
-        // 检查必填字段
-        if (!values.name || !values.node_id) {
-            return false;
-        }
-
-        // 检查字段是否有错误
-        if (formState.error || nodeIdState.error) {
-            return false;
-        }
-
-        // 检查初始值
-        if (values.initial_value) {
-            const result = validateInitialValue(values.initial_value, values.data_type);
-            if (!result.isValid) {
-                return false;
-            }
-        }
-
-        return true;
-    };
-
-    // 渲染初始值输入控件
+    // 修改初始值输入控件的渲染逻辑
     const renderInitialValueInput = (dataType: string, field: any) => {
+        // 如果是日期时间类型，只显示提示信息
+        if (dataType === 'DATETIME') {
+            return (
+                <div className="text-sm text-muted-foreground p-2 bg-gray-50 rounded-md">
+                    将使用当前时间作为初始值
+                </div>
+            );
+        }
+
         const validateInput = (value: string) => {
             if (!value) {
                 setInitialValueError(null);
@@ -994,6 +971,32 @@ export function NodeForm({ nodeId }: NodeFormProps) {
         );
     };
 
+    // 修改表单中的初始值字段渲染
+    const renderInitialValueField = () => {
+        const dataType = form.watch('data_type');
+        
+        return (
+            <FormField
+                control={form.control}
+                name="initial_value"
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>初始值</FormLabel>
+                        <FormControl>
+                            {renderInitialValueInput(dataType, field)}
+                        </FormControl>
+                        {dataType !== 'DATETIME' && (
+                            <FormDescription>
+                                请输入与所选数据类型匹配的初始值
+                            </FormDescription>
+                        )}
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
+        );
+    };
+
     // 渲染数据类型选择器
     const renderDataTypeSelect = () => (
         <FormField
@@ -1003,7 +1006,17 @@ export function NodeForm({ nodeId }: NodeFormProps) {
                 <FormItem>
                     <FormLabel>数据类型</FormLabel>
                     <Select 
-                        onValueChange={field.onChange} 
+                        onValueChange={(value) => {
+                            field.onChange(value);
+                            // 当数据类型改变时，重置值变化类型为"不自动变化"
+                            form.setValue('value_change_type', 'none');
+                            form.setValue('value_change_config', null);
+                            
+                            // 如果是日期时间类型，清空初始值
+                            if (value === 'DATETIME') {
+                                form.setValue('initial_value', '');
+                            }
+                        }}
                         defaultValue={field.value}
                         value={field.value}
                     >
@@ -1027,36 +1040,222 @@ export function NodeForm({ nodeId }: NodeFormProps) {
     );
 
     // 渲染值变化类型选择器
-    const renderValueChangeTypeSelect = () => (
-        <FormField
-            control={form.control}
-            name="value_change_type"
-            render={({ field }) => (
-                <FormItem>
-                    <FormLabel>值变化类型</FormLabel>
-                    <Select 
-                        onValueChange={field.onChange} 
-                        defaultValue={field.value}
-                        value={field.value}
-                    >
-                        <FormControl>
-                            <SelectTrigger>
-                                <SelectValue placeholder="选择值变化类型" />
-                            </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                            {valueChangeOptions.map((type) => (
-                                <SelectItem key={type.value} value={type.value}>
-                                    {type.label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <FormMessage />
-                </FormItem>
-            )}
-        />
-    );
+    const renderValueChangeTypeSelect = () => {
+        const dataType = form.watch('data_type');
+        const options = getValueChangeOptions(dataType);
+        
+        return (
+            <FormField
+                control={form.control}
+                name="value_change_type"
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>值变化类型</FormLabel>
+                        <Select
+                            onValueChange={(value) => {
+                                field.onChange(value);
+                                // 更新配置时同时传入数据类型
+                                form.setValue('value_change_config', getDefaultConfig(value, dataType));
+                            }}
+                            value={field.value}
+                        >
+                            <FormControl>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="选择值变化类型" />
+                                </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                                {options.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
+        );
+    };
+
+    // 渲值变化配置表单
+    const renderValueChangeConfig = () => {
+        const type = form.watch('value_change_type');
+        const dataType = form.watch('data_type');
+
+        // 只有数值类型才显示精度设置
+        const showPrecision = ['FLOAT', 'DOUBLE'].includes(dataType);
+
+        if (type === 'none') {
+            return null;
+        }
+
+        return (
+            <div className="space-y-4">
+                {showPrecision && (
+                    <FormField
+                        control={form.control}
+                        name="value_precision"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>数值精度 (小数位数)</FormLabel>
+                                <FormControl>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        max={10}
+                                        {...field}
+                                        onChange={e => field.onChange(parseInt(e.target.value))}
+                                    />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                )}
+                {type === 'linear' && <LinearChangeConfig form={form} />}
+                {type === 'discrete' && <DiscreteChangeConfig form={form} />}
+                {type === 'random' && <RandomChangeConfig form={form} />}
+                {type === 'conditional' && <ConditionalChangeConfig form={form} />}
+            </div>
+        );
+    };
+
+    // 检查表单是否有效
+    const isFormValid = () => {
+        const values = form.getValues();
+        const formState = form.getFieldState('name');
+        const nodeIdState = form.getFieldState('node_id');
+        
+        // 检查必填字段
+        if (!values.name || !values.node_id) {
+            return false;
+        }
+
+        // 检查字段是否有错误
+        if (formState.error || nodeIdState.error) {
+            return false;
+        }
+
+        // 检查初始值
+        if (values.initial_value) {
+            const result = validateInitialValue(values.initial_value, values.data_type);
+            if (!result.isValid) {
+                return false;
+            }
+        }
+
+        return true;
+    };
+
+    const onSubmit = async (data: z.infer<typeof formSchema>) => {
+        try {
+            setIsSubmitting(true);
+            
+            // 准备提交数据
+            const submitData = {
+                name: data.name,
+                node_id: data.node_id,
+                data_type: data.data_type,
+                access_level: data.access_level,
+                description: data.description,
+                // 对于 DATETIME 类型，完全不提交 initial_value 字段
+                ...(data.data_type !== 'DATETIME' && { initial_value: data.initial_value }),
+                value_change_type: data.value_change_type.toLowerCase(),
+                value_change_config: data.value_change_type === 'none' ? null : {
+                    ...data.value_change_config,
+                    // 确保数值字段为数值类型
+                    ...(data.value_change_type === 'linear' && {
+                        min_value: Number(data.value_change_config?.min_value),
+                        max_value: Number(data.value_change_config?.max_value),
+                        update_interval: Number(data.value_change_config?.update_interval),
+                        step_size: Number(data.value_change_config?.step_size),
+                    }),
+                    ...(data.value_change_type === 'random' && {
+                        min_value: Number(data.value_change_config?.min_value),
+                        max_value: Number(data.value_change_config?.max_value),
+                        update_interval: Number(data.value_change_config?.update_interval),
+                    }),
+                    ...(data.value_change_type === 'discrete' && {
+                        update_interval: Number(data.value_change_config?.update_interval),
+                        values: Array.isArray(data.value_change_config?.values) 
+                            ? data.value_change_config.values.filter((v: string) => v.trim() !== '')
+                            : []
+                    }),
+                    ...(data.value_change_type === 'conditional' && {
+                        trigger_node_id: data.value_change_config?.trigger_node_id,
+                        trigger_value: data.value_change_config?.trigger_value,
+                        change_value: data.data_type === 'DATETIME' ? 'CURRENT_TIME' : data.value_change_config?.change_value
+                    })
+                },
+                // 如果不是浮点数类型清空精度设置
+                value_precision: ['FLOAT', 'DOUBLE'].includes(data.data_type) ? data.value_precision : null,
+                // 确保 serverIds 是数组
+                serverIds: Array.from(tempSelectedServers)
+            };
+
+            console.log('提交数据:', submitData);
+
+            if (nodeId) {
+                // 更新节点
+                await updateNode(nodeId, submitData);
+                toast.success('节点更新成功');
+            } else {
+                // 创建节点
+                if (isBatchMode) {
+                    // 批量创建逻辑
+                    const { name, node_id } = submitData;
+                    const namePattern = parsePlaceholderPattern(name);
+                    const nodeIdPattern = parsePlaceholderPattern(node_id);
+
+                    if (!namePattern.hasPlaceholder && !nodeIdPattern.hasPlaceholder) {
+                        throw new Error('批量创建模式下，节点名称或节点ID必须包含占位符 {n}');
+                    }
+
+                    const names = generateBatchNames(name, batchCount);
+                    const nodeIds = generateBatchNames(node_id, batchCount);
+
+                    const createPromises = names.map((name, index) => {
+                        const batchData = {
+                            ...submitData,
+                            name,
+                            node_id: nodeIds[index],
+                        };
+                        return createNode(batchData);
+                    });
+
+                    await Promise.all(createPromises);
+                    toast.success(`成功创建 ${batchCount} 个节点`);
+                } else {
+                    // 单个节点创建
+                    try {
+                        await createNode(submitData);
+                        toast.success('节点创建成功');
+                    } catch (error) {
+                        if (error instanceof Error) {
+                            toast.error(error.message);
+                            return;
+                        }
+                        toast.error('创建节点失败');
+                        return;
+                    }
+                }
+            }
+
+            router.refresh();
+            router.push('/nodes');
+        } catch (error) {
+            console.error('保存节点失败:', error);
+            if (error instanceof Error) {
+                toast.error(error.message);
+            } else {
+                toast.error('保存节点失败');
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     return (
         <Form {...form}>
@@ -1134,6 +1333,7 @@ export function NodeForm({ nodeId }: NodeFormProps) {
                 />
 
                 {renderDataTypeSelect()}
+                {renderInitialValueField()}
 
                 <FormField
                     control={form.control}
@@ -1157,23 +1357,6 @@ export function NodeForm({ nodeId }: NodeFormProps) {
                             </Select>
                             <FormDescription>
                                 选择节点的访问权限
-                            </FormDescription>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-
-                <FormField
-                    control={form.control}
-                    name="initial_value"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>初始值</FormLabel>
-                            <FormControl>
-                                {renderInitialValueInput(form.watch('data_type'), field)}
-                            </FormControl>
-                            <FormDescription>
-                                请输入与所选数据类型匹配的初始值
                             </FormDescription>
                             <FormMessage />
                         </FormItem>

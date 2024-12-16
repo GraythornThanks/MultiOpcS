@@ -32,23 +32,37 @@ import { createPortal } from 'react-dom';
 interface DataTableProps<TData, TValue> {
     columns: ColumnDef<TData, TValue>[];
     data: TData[];
+    isLoading?: boolean;
 }
 
 export function DataTable<TData, TValue>({
     columns,
     data,
+    isLoading = false,
 }: DataTableProps<TData, TValue>) {
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
     const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
     const [mounted, setMounted] = useState(false);
+    const [isInitialized, setIsInitialized] = useState(false);
     const router = useRouter();
 
     // 客户端挂载检测
     useEffect(() => {
         setMounted(true);
-        return () => setMounted(false);
+        return () => {
+            setMounted(false);
+            setIsInitialized(false);
+        };
     }, []);
+
+    // 数据初始化检测
+    useEffect(() => {
+        if (mounted && data) {
+            console.log('数据初始化检查:', { data, isArray: Array.isArray(data), length: data.length });
+            setIsInitialized(true);
+        }
+    }, [mounted, data]);
 
     // 重置选择状态
     useEffect(() => {
@@ -73,54 +87,93 @@ export function DataTable<TData, TValue>({
         },
     });
 
+    console.log('表格数据状态:', {
+        mounted,
+        isInitialized,
+        dataLength: data?.length,
+        rowsLength: table.getRowModel().rows?.length,
+    });
+
     const handleBatchDelete = async () => {
-        const selectedRows = table.getFilteredSelectedRowModel().rows;
-        if (selectedRows.length === 0) {
-            toast.error('请选择要删除的节点');
-            return;
-        }
-
-        if (confirm(`确定要删除选中的 ${selectedRows.length} 个节点吗？`)) {
-            try {
-                const deletePromises = selectedRows.map(async (row) => {
-                    const node = row.original as any;
-                    await deleteNode(node.id);
-                });
-
-                await Promise.all(deletePromises);
-                toast.success(`成功删除 ${selectedRows.length} 个节点`);
-                setRowSelection({}); // 清空选择状态
-                router.refresh();
-            } catch (error) {
-                console.error('批量删除节点失败:', error);
-                toast.error('批量删除节点失败');
+        if (!isInitialized || !table) return;
+        
+        try {
+            const selectedModel = table.getFilteredSelectedRowModel();
+            if (!selectedModel?.rows?.length) {
+                toast.error('请选择要删除的节点');
+                return;
             }
+
+            const selectedRows = selectedModel.rows;
+            if (confirm(`确定要删除选中的 ${selectedRows.length} 个节点吗？`)) {
+                try {
+                    const deletePromises = selectedRows.map(async (row) => {
+                        const node = row.original as any;
+                        if (!node?.id) {
+                            throw new Error('节点数据无效');
+                        }
+                        await deleteNode(node.id);
+                    });
+
+                    await Promise.all(deletePromises);
+                    toast.success(`成功删除 ${selectedRows.length} 个节点`);
+                    setRowSelection({});
+                    router.refresh();
+                } catch (error) {
+                    console.error('批量删除节点失败:', error);
+                    toast.error('批量删除节点失败');
+                }
+            }
+        } catch (error) {
+            console.error('获取选中行数据失败:', error);
+            toast.error('获取选中行数据失败');
         }
     };
 
     // 渲染删除按钮到指定容器
     const renderDeleteButton = () => {
-        if (!mounted) return null;
+        if (!mounted || !isInitialized || !table) return null;
         
-        const container = document.getElementById('batch-delete-container');
-        if (!container) return null;
+        try {
+            const container = document.getElementById('batch-delete-container');
+            if (!container) return null;
 
-        const selectedCount = table.getFilteredSelectedRowModel().rows.length;
-        if (selectedCount === 0) return null;
+            const selectedCount = Object.keys(rowSelection).length;
+            if (selectedCount === 0) return null;
 
-        return createPortal(
-            <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleBatchDelete}
-                className="h-9"
-            >
-                <Trash2 className="mr-2 h-4 w-4" />
-                删除所选 ({selectedCount})
-            </Button>,
-            container
-        );
+            return createPortal(
+                <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleBatchDelete}
+                    className="h-9"
+                >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    删除所选 ({selectedCount})
+                </Button>,
+                container
+            );
+        } catch (error) {
+            console.error('渲染删除按钮失败:', error);
+            return null;
+        }
     };
+
+    if (isLoading) {
+        return (
+            <div className="w-full h-24 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            </div>
+        );
+    }
+
+    if (!mounted || !isInitialized) {
+        return (
+            <div className="w-full h-24 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            </div>
+        );
+    }
 
     return (
         <div>
@@ -130,18 +183,16 @@ export function DataTable<TData, TValue>({
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (
                             <TableRow key={headerGroup.id}>
-                                {headerGroup.headers.map((header) => {
-                                    return (
-                                        <TableHead key={header.id}>
-                                            {header.isPlaceholder
-                                                ? null
-                                                : flexRender(
-                                                      header.column.columnDef.header,
-                                                      header.getContext()
-                                                  )}
-                                        </TableHead>
-                                    );
-                                })}
+                                {headerGroup.headers.map((header) => (
+                                    <TableHead key={header.id}>
+                                        {header.isPlaceholder
+                                            ? null
+                                            : flexRender(
+                                                  header.column.columnDef.header,
+                                                  header.getContext()
+                                              )}
+                                    </TableHead>
+                                ))}
                             </TableRow>
                         ))}
                     </TableHeader>

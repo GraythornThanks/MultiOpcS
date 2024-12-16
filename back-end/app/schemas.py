@@ -125,41 +125,60 @@ class NodeBase(BaseModel):
 
     @classmethod
     def validate_value_for_type(cls, value: str, data_type: DataType):
+        """验证值是否符合数据类型"""
         try:
+            # 首先检查是否是表达式或特殊关键字
+            if value == "CURRENT_TIME" and data_type == DataType.DATETIME:
+                return  # 如果是日期时间类型且值为CURRENT_TIME，直接返回
+                
+            if any(op in value for op in '+-*/()') or 'trigger_value' in value or 'current_value' in value:
+                if not is_valid_expression(value):
+                    raise ValueError("无效的计算表达式")
+                return  # 如果是有效的表达式，直接返回
+                
+            # 如果是日期时间类型，直接返回，不进行验证
+            if data_type == DataType.DATETIME:
+                return
+                
+            # 如果不是表达式，进行数值类型验证
             if data_type == DataType.UINT16:
                 val = int(value)
                 if not (0 <= val <= 65535):
-                    raise ValueError("UINT16 must be between 0 and 65535")
+                    raise ValueError("UINT16 的值必须在 0 到 65535 之间")
+                    
             elif data_type == DataType.UINT32:
                 val = int(value)
                 if not (0 <= val <= 4294967295):
-                    raise ValueError("UINT32 must be between 0 and 4294967295")
+                    raise ValueError("UINT32 的值必须在 0 到 4294967295 之间")
+                    
             elif data_type == DataType.UINT64:
                 val = int(value)
                 if not (0 <= val <= 18446744073709551615):
-                    raise ValueError("UINT64 must be between 0 and 18446744073709551615")
+                    raise ValueError("UINT64 的值超出范围")
+                    
             elif data_type == DataType.INT32:
                 val = int(value)
                 if not (-2147483648 <= val <= 2147483647):
-                    raise ValueError("INT32 must be between -2147483648 and 2147483647")
+                    raise ValueError("INT32 的值必须在 -2147483648 到 2147483647 之间")
+                    
             elif data_type == DataType.INT64:
                 val = int(value)
                 if not (-9223372036854775808 <= val <= 9223372036854775807):
-                    raise ValueError("INT64 must be between -9223372036854775808 and 9223372036854775807")
+                    raise ValueError("INT64 的值超出范围")
+                    
             elif data_type in (DataType.FLOAT, DataType.DOUBLE):
-                float(value)
+                float(value)  # 验证是否可以转换为浮点数
+                
             elif data_type == DataType.BOOL:
                 if value.lower() not in ('true', 'false', '1', '0'):
-                    raise ValueError("BOOL must be true/false or 1/0")
+                    raise ValueError("布尔值必须是 true/false 或 1/0")
+                    
             elif data_type == DataType.CHAR:
                 if len(value) != 1:
-                    raise ValueError("CHAR must be a single character")
-            elif data_type == DataType.DATETIME:
-                if not re.match(ISO_DATETIME_PATTERN, value):
-                    raise ValueError("DATETIME must be in ISO 8601 format")
-                datetime.strptime(value.replace('Z', '+0000'), '%Y-%m-%dT%H:%M:%S.%f')
+                    raise ValueError("字符类型必须是单个字符")
+                
         except ValueError as e:
-            raise ValueError(f"Invalid value for type {data_type}: {str(e)}")
+            raise ValueError(f"值类型验证失败: {str(e)}")
 
 class NodeCreate(BaseModel):
     """创建节点的请求模型"""
@@ -190,7 +209,29 @@ class NodeCreate(BaseModel):
                     models.DataType.DOUBLE
                 ]
 
-                if self.value_change_type == models.ValueChangeType.LINEAR:
+                if self.value_change_type == models.ValueChangeType.CONDITIONAL:
+                    required_fields = ['trigger_node_id', 'trigger_value', 'change_value']
+                    for field in required_fields:
+                        if field not in self.value_change_config:
+                            raise ValueError(f"条件变化配置缺少必要字段: {field}")
+                    
+                    # 验证触发值
+                    self.validate_value_for_type(
+                        str(self.value_change_config['trigger_value']),
+                        self.data_type
+                    )
+                    
+                    # 验证变化值 - 如果是表达式则使用表达式验证，否则使用普通值验证
+                    change_value = str(self.value_change_config['change_value'])
+                    if (any(op in change_value for op in '+-*/()') or 
+                        'trigger_value' in change_value or 
+                        'current_value' in change_value):
+                        if not is_valid_expression(change_value):
+                            raise ValueError("无效的计算表达式")
+                    else:
+                        self.validate_value_for_type(change_value, self.data_type)
+
+                elif self.value_change_type == models.ValueChangeType.LINEAR:
                     if self.data_type not in numeric_types:
                         raise ValueError("线性变化只支持数值类型")
                     required_fields = ['min_value', 'max_value', 'update_interval', 'step_size']
@@ -235,22 +276,6 @@ class NodeCreate(BaseModel):
                     except (ValueError, TypeError):
                         raise ValueError("随机变化配置的字段类型不正确")
 
-                elif self.value_change_type == models.ValueChangeType.CONDITIONAL:
-                    required_fields = ['trigger_node_id', 'trigger_value', 'change_value']
-                    for field in required_fields:
-                        if field not in self.value_change_config:
-                            raise ValueError(f"条件变化配置缺少必要字段: {field}")
-                    
-                    # 验证触发值和变化值是否符合数据类型
-                    self.validate_value_for_type(
-                        str(self.value_change_config['trigger_value']),
-                        self.data_type
-                    )
-                    self.validate_value_for_type(
-                        str(self.value_change_config['change_value']),
-                        self.data_type
-                    )
-
             # 验证数值精度
             if self.value_precision is not None:
                 if self.data_type not in [models.DataType.FLOAT, models.DataType.DOUBLE]:
@@ -267,38 +292,56 @@ class NodeCreate(BaseModel):
     def validate_value_for_type(cls, value: str, data_type: models.DataType) -> None:
         """验证值是否符合数据类型"""
         try:
+            # 首先检查是否是表达式或特殊关键字
+            if value == "CURRENT_TIME" and data_type == models.DataType.DATETIME:
+                return  # 如果是日期时间类型且值为CURRENT_TIME，直接返回
+                
+            if any(op in value for op in '+-*/()') or 'trigger_value' in value or 'current_value' in value:
+                if not is_valid_expression(value):
+                    raise ValueError("无效的计算表达式")
+                return  # 如果是有效的表达式，直接返回
+                
+            # 如果是日期时间类型，直接返回，不进行验证
+            if data_type == models.DataType.DATETIME:
+                return
+                
+            # 如果不是表达式，进行数值类型验证
             if data_type == models.DataType.UINT16:
                 val = int(value)
                 if not (0 <= val <= 65535):
                     raise ValueError("UINT16 的值必须在 0 到 65535 之间")
+                    
             elif data_type == models.DataType.UINT32:
                 val = int(value)
                 if not (0 <= val <= 4294967295):
                     raise ValueError("UINT32 的值必须在 0 到 4294967295 之间")
+                    
             elif data_type == models.DataType.UINT64:
                 val = int(value)
                 if not (0 <= val <= 18446744073709551615):
                     raise ValueError("UINT64 的值超出范围")
+                    
             elif data_type == models.DataType.INT32:
                 val = int(value)
                 if not (-2147483648 <= val <= 2147483647):
                     raise ValueError("INT32 的值必须在 -2147483648 到 2147483647 之间")
+                    
             elif data_type == models.DataType.INT64:
                 val = int(value)
                 if not (-9223372036854775808 <= val <= 9223372036854775807):
                     raise ValueError("INT64 的值超出范围")
+                    
             elif data_type in (models.DataType.FLOAT, models.DataType.DOUBLE):
-                float(value)
+                float(value)  # 验证是否可以转换为浮点数
+                
             elif data_type == models.DataType.BOOL:
                 if value.lower() not in ('true', 'false', '1', '0'):
                     raise ValueError("布尔值必须是 true/false 或 1/0")
+                    
             elif data_type == models.DataType.CHAR:
                 if len(value) != 1:
                     raise ValueError("字符类型必须是单个字符")
-            elif data_type == models.DataType.DATETIME:
-                if not re.match(ISO_DATETIME_PATTERN, value):
-                    raise ValueError("日期时间必须符合 ISO 8601 格式")
-                datetime.strptime(value.replace('Z', '+0000'), '%Y-%m-%dT%H:%M:%S.%f')
+                
         except ValueError as e:
             raise ValueError(f"值类型验证失败: {str(e)}")
 
@@ -442,3 +485,41 @@ class NodeBatchCreate(BaseModel):
                 "serverIds": [1]
             }
         } 
+
+def is_valid_expression(expr: str) -> bool:
+    """验证是否为有效的计算表达式"""
+    # 检查是否包含允许的变量和运算符
+    allowed_vars = ['trigger_value', 'current_value']
+    allowed_ops = ['+', '-', '*', '/', '%', '**', '(', ')']
+    
+    # 移除所有空白字符
+    expr = expr.replace(' ', '')
+    
+    # 检查是否只包含允许的变量、数字和运算符
+    current_token = ''
+    for char in expr:
+        if char.isalpha() or char == '_':
+            current_token += char
+        else:
+            if current_token:
+                if current_token not in allowed_vars:
+                    return False
+                current_token = ''
+            if not (char.isdigit() or char in allowed_ops or char == '.'):
+                return False
+    
+    # 检查最后一个token
+    if current_token and current_token not in allowed_vars:
+        return False
+        
+    return True
+
+class PaginatedNodes(BaseModel):
+    """分页节点列表响应模型"""
+    total: int
+    items: List[Node]
+    skip: int
+    limit: int
+
+    class Config:
+        from_attributes = True

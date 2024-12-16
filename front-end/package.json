@@ -21,6 +21,7 @@
     "@tanstack/react-table": "^8.20.5",
     "class-variance-authority": "latest",
     "clsx": "latest",
+    "date-fns": "^4.1.0",
     "lucide-react": "latest",
     "next": "latest",
     "react": "latest",
