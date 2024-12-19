@@ -1,51 +1,89 @@
-import { Metadata } from "next";
+'use client';
+
 import { NodeForm } from "../../node-form";
 import { getNode } from "@/lib/api";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
+import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { Node } from "@/types";
+import { toast } from "sonner";
 
-type Props = {
-    params: Promise<{ id: string }>;
-};
-
-async function getNodeData(id: string) {
-    const node = await getNode(parseInt(id));
-    if (!node) {
-        return null;
-    }
-    return node;
+function LoadingUI() {
+    return (
+        <div className="container mx-auto py-10">
+            <div className="space-y-6">
+                <h1 className="text-3xl font-bold tracking-tight">加载中...</h1>
+                <div className="max-w-2xl animate-pulse">
+                    <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
+                    <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
+                    <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                </div>
+            </div>
+        </div>
+    );
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-    const { id } = await params;
-    const node = await getNodeData(id);
-    
-    if (!node) {
-        return {
-            title: '节点不存在',
-            description: '找不到请求的 OPC UA 节点',
-        };
+export default function EditNodePage() {
+    const params = useParams();
+    const id = params?.id as string;
+    const [node, setNode] = useState<Node | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        async function loadNode() {
+            if (!id) return;
+            
+            try {
+                const nodeData = await getNode(parseInt(id));
+                if (!nodeData) {
+                    notFound();
+                }
+                setNode(nodeData);
+            } catch (err) {
+                const message = err instanceof Error ? err.message : '加载节点数据失败';
+                setError(message);
+                toast.error(message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        loadNode();
+    }, [id]);
+
+    if (!id) {
+        return notFound();
     }
 
-    return {
-        title: `编辑节点 - ${node.name}`,
-        description: `编辑 OPC UA 节点: ${node.name} (${node.node_id})`,
-    };
-}
+    if (loading) {
+        return <LoadingUI />;
+    }
 
-export default async function EditNodePage({ params }: Props) {
-    const { id } = await params;
-    const node = await getNodeData(id);
-
-    if (!node) {
-        notFound();
+    if (error) {
+        return (
+            <div className="container mx-auto py-10">
+                <div className="space-y-6">
+                    <h1 className="text-3xl font-bold tracking-tight">加载失败</h1>
+                    <div className="max-w-2xl">
+                        <p className="text-red-500">{error}</p>
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     return (
-        <div>
+        <div className="container mx-auto py-10">
             <div className="space-y-6">
-                <h1 className="text-3xl font-bold tracking-tight">编辑节点 - {node.name}</h1>
+                <h1 className="text-3xl font-bold tracking-tight">
+                    编辑节点 {node?.name ? `- ${node.name}` : ''}
+                </h1>
                 <div className="max-w-2xl">
-                    <NodeForm nodeId={node.id} />
+                    <Suspense fallback={<LoadingUI />}>
+                        <NodeForm nodeId={parseInt(id)} />
+                    </Suspense>
                 </div>
             </div>
         </div>

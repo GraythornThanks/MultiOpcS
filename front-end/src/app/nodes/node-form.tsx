@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/select';
 import { createNode, updateNode, getNode, getNodes } from '@/lib/api';
 import { useEffect, useState } from 'react';
-import { Node } from '@/types';
+import { Node, DataType, AccessLevel, ValueChangeType, ValueChangeConfig } from '@/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
@@ -76,7 +76,7 @@ type AccessLevel = typeof accessLevels[number]['value'];
 const valueChangeOptions = [
     { value: 'none', label: '不自动变化' },
     { value: 'linear', label: '线性变化' },
-    { value: 'discrete', label: '离散值变��' },
+    { value: 'discrete', label: '离散值变化' },
     { value: 'random', label: '随机变化' },
     { value: 'conditional', label: '条件变化' },
 ];
@@ -85,6 +85,20 @@ type ValueChangeType = typeof valueChangeOptions[number]['value'];
 
 interface NodeFormProps {
     nodeId?: number;
+    onSuccess?: () => void;
+}
+
+interface NodeFormData {
+    name: string;
+    node_id: string;
+    data_type: DataType;
+    access_level: AccessLevel;
+    description?: string;
+    initial_value?: string;
+    value_change_type: ValueChangeType;
+    value_change_config?: ValueChangeConfig;
+    value_precision?: number;
+    serverIds: number[];
 }
 
 // 解析占位符模式
@@ -181,7 +195,7 @@ const validateInitialValue = (value: string, dataType: string): { isValid: boole
             case 'DOUBLE':
                 const floatVal = parseFloat(value);
                 if (isNaN(floatVal)) {
-                    return { isValid: false, message: "��输入有效的浮点数" };
+                    return { isValid: false, message: "请输入有效的浮点数" };
                 }
                 break;
 
@@ -505,7 +519,7 @@ const getDefaultConfig = (type: string, dataType: string) => {
                 return {
                     trigger_node_id: '',
                     trigger_value: '',
-                    change_value: 'CURRENT_TIME', // 使用CURRENT_TIME关键字
+                    change_value: 'CURRENT_TIME', // 用CURRENT_TIME关键字
                 };
             }
             return {
@@ -602,7 +616,7 @@ function ConditionalChangeConfig({ form }: { form: any }) {
                         </FormControl>
                         {!isDateTime && (
                             <div className="text-sm text-muted-foreground mt-2">
-                                <div className="mb-2">支持以下计算表达式：</div>
+                                <div className="mb-2">支持下列表达式：</div>
                                 <div className="bg-gray-50 p-3 rounded-md space-y-3">
                                     <div>
                                         <div className="font-medium mb-1">可用变量：</div>
@@ -673,7 +687,7 @@ const getValueChangeOptions = (dataType: string) => {
     }
 };
 
-export function NodeForm({ nodeId }: NodeFormProps) {
+export function NodeForm({ nodeId, onSuccess }: NodeFormProps) {
     const router = useRouter();
     const [existingNodeIds, setExistingNodeIds] = useState<Set<string>>(new Set());
     const [existingNames, setExistingNames] = useState<Set<string>>(new Set());
@@ -710,11 +724,13 @@ export function NodeForm({ nodeId }: NodeFormProps) {
     useEffect(() => {
         const fetchExistingNodes = async () => {
             try {
-                const nodes = await getNodes();
-                const nodeIds = new Set(nodes.map(node => node.node_id));
-                const names = new Set(nodes.map(node => node.name));
-                setExistingNodeIds(nodeIds);
-                setExistingNames(names);
+                const response = await getNodes();
+                if (response && Array.isArray(response.items)) {
+                    const nodeIds = new Set(response.items.map((node: Node) => node.node_id));
+                    const names = new Set(response.items.map((node: Node) => node.name));
+                    setExistingNodeIds(nodeIds);
+                    setExistingNames(names);
+                }
             } catch (error) {
                 console.error('获取节点列表失败:', error);
                 toast.error('获取节点列表失败');
@@ -733,7 +749,7 @@ export function NodeForm({ nodeId }: NodeFormProps) {
                 setServers(data);
             } catch (error) {
                 console.error('加载服务器列表失败:', error);
-                toast.error('加载服���器列表失败');
+                toast.error('加载服务器列表失败');
             }
         };
         fetchServers();
@@ -1323,7 +1339,7 @@ export function NodeForm({ nodeId }: NodeFormProps) {
                             <div className="text-sm text-muted-foreground">
                                 示例：
                                 <ul className="list-disc list-inside text-sm mt-1">
-                                    <li><code>ns=2;s=Tube{'{n}'}.No</code> - 批量字符串标识符</li>
+                                    <li><code>ns=2;s=Tube{'{n}'}.No</code> - 批量字符串标符</li>
                                     <li><code>ns=2;i={'{n}'}</code> - 批量数字标识符</li>
                                 </ul>
                             </div>

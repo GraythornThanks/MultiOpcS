@@ -56,8 +56,8 @@ export function ServerForm({ serverId }: ServerFormProps) {
     useEffect(() => {
         async function loadData() {
             try {
-                const allNodes = await getNodes();
-                setNodes(allNodes);
+                const nodesData = await getNodes(1, 100);
+                setNodes(nodesData.items || []);
 
                 if (serverId && initialLoad) {
                     const serverData = await getServer(serverId);
@@ -76,6 +76,7 @@ export function ServerForm({ serverId }: ServerFormProps) {
                 }
             } catch (error) {
                 console.error('加载数据失败:', error);
+                setNodes([]);
             } finally {
                 setLoading(false);
             }
@@ -205,7 +206,7 @@ export function ServerForm({ serverId }: ServerFormProps) {
                                         <Checkbox
                                             id="select-all"
                                             checked={isAllSelected}
-                                            ref={(input) => {
+                                            ref={(input: HTMLInputElement | null) => {
                                                 if (input) {
                                                     input.indeterminate = isIndeterminate;
                                                 }

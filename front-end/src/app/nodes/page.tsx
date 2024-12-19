@@ -35,13 +35,11 @@ export default function NodesPage() {
                 
                 if (response && Array.isArray(response.items)) {
                     setNodes(response.items);
-                    const total = response.total || 0;
-                    const totalPages = Math.max(1, Math.ceil(total / pageSize));
-                    setTotalPages(totalPages);
+                    setTotalPages(response.pages);
                     
                     // 如果当前页超出总页数，自动跳转到最后一页
-                    if (currentPage > totalPages) {
-                        setCurrentPage(totalPages);
+                    if (currentPage > response.pages) {
+                        setCurrentPage(response.pages);
                     }
                 } else {
                     console.error('返回的数据格式不正确:', response);

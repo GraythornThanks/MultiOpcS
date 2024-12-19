@@ -1,8 +1,8 @@
-import { CreateNodeDto, CreateServerDto, Node, OPCUAServer, UpdateNodeDto, UpdateServerDto } from '@/types';
+import { CreateNodeDto, CreateServerDto, Node, OPCUAServer, UpdateNodeDto, UpdateServerDto, PaginatedNodes } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-const DEFAULT_TIMEOUT = 10000; // 10 seconds
+const DEFAULT_TIMEOUT = 30000; // 增加到30秒
 
 const defaultHeaders = {
     'Content-Type': 'application/json',
@@ -21,7 +21,6 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout 
                 ...options.headers,
             },
             signal: controller.signal,
-            credentials: 'include',
         });
         clearTimeout(id);
         return response;
@@ -29,7 +28,7 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout 
         clearTimeout(id);
         if (error instanceof Error) {
             if (error.name === 'AbortError') {
-                throw new Error('请求超时');
+                throw new Error('请求超时，请检查网络连接或稍后重试');
             }
         }
         throw error;
@@ -52,17 +51,37 @@ export async function getServers(): Promise<OPCUAServer[]> {
 
 export async function getServer(id: number): Promise<OPCUAServer | null> {
     try {
-        const response = await fetchWithTimeout(`${API_BASE_URL}/servers/${id}`);
+        const response = await fetchWithTimeout(
+            `${API_BASE_URL}/servers/${id}`,
+            {},
+            30000 // 30秒超时
+        );
+
         if (!response.ok) {
             if (response.status === 404) {
+                console.log(`服务器 ${id} 不存在`);
                 return null;
             }
-            throw new Error('获取服务器详情失败');
+
+            const errorData = await response.json().catch(() => ({}));
+            const errorMessage = errorData.detail || '获取服务器详情失败';
+            console.error('获取服务器详情失败:', {
+                status: response.status,
+                statusText: response.statusText,
+                error: errorMessage
+            });
+            throw new Error(errorMessage);
         }
-        return response.json();
+
+        const data = await response.json();
+        return data;
     } catch (error) {
+        if (error instanceof Error) {
+            console.error('获取服务器详情失败:', error.message);
+            throw new Error(`获取服务器详情失败: ${error.message}`);
+        }
         console.error('获取服务器详情失败:', error);
-        return null;
+        throw new Error('获取服务器详情失败: 未知错误');
     }
 }
 
@@ -104,73 +123,92 @@ export async function deleteServer(id: number): Promise<void> {
 }
 
 // Node API functions
-interface PaginatedNodes {
-    total: number;
-    items: Node[];
-    skip: number;
-    limit: number;
-}
-
 export async function getNodes(page: number = 1, pageSize: number = 10): Promise<PaginatedNodes> {
     try {
         const skip = (page - 1) * pageSize;
         const response = await fetchWithTimeout(
-            `${API_BASE_URL}/nodes/?skip=${skip}&limit=${pageSize}`
+            `${API_BASE_URL}/nodes/?skip=${skip}&limit=${pageSize}`,
+            {},
+            60000  // 为节点列表特别设置60秒超时
         );
         
         if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('获取节点列表失败:', {
+                status: response.status,
+                statusText: response.statusText,
+                error: errorData
+            });
             throw new Error('获取节点列表失败');
         }
         
         const data = await response.json();
         console.log('API 返回数据:', data);
         
-        // 如果返回的是数组，转换为分页格式
-        if (Array.isArray(data)) {
-            return {
-                items: data,
-                total: data.length,
-                skip: skip,
-                limit: pageSize
-            };
-        }
-        
         // 确保返回的数据符合分页格式
-        if (!data.items || !data.total) {
+        if (!data.items || typeof data.total !== 'number') {
             console.error('API 返回的数据格式不正确:', data);
             return {
                 items: [],
                 total: 0,
-                skip: skip,
-                limit: pageSize
+                page: 1,
+                size: pageSize,
+                pages: 1
             };
         }
         
-        return data;
+        return {
+            items: data.items,
+            total: data.total,
+            page: data.page || page,
+            size: data.size || pageSize,
+            pages: data.pages || Math.ceil(data.total / pageSize)
+        };
     } catch (error) {
         console.error('获取节点列表失败:', error);
         return {
             items: [],
             total: 0,
-            skip: skip,
-            limit: pageSize
+            page: 1,
+            size: pageSize,
+            pages: 1
         };
     }
 }
 
 export async function getNode(id: number): Promise<Node | null> {
     try {
-        const response = await fetchWithTimeout(`${API_BASE_URL}/nodes/${id}`);
+        const response = await fetchWithTimeout(
+            `${API_BASE_URL}/nodes/${id}`,
+            {},
+            30000 // 30秒超时
+        );
+
         if (!response.ok) {
             if (response.status === 404) {
+                console.log(`节点 ${id} 不存在`);
                 return null;
             }
-            throw new Error('获取节点详情失败');
+
+            const errorData = await response.json().catch(() => ({}));
+            const errorMessage = errorData.detail || '获取节点详情失败';
+            console.error('获取节点详情失败:', {
+                status: response.status,
+                statusText: response.statusText,
+                error: errorMessage
+            });
+            throw new Error(errorMessage);
         }
-        return response.json();
+
+        const data = await response.json();
+        return data;
     } catch (error) {
+        if (error instanceof Error) {
+            console.error('获取节点详情失败:', error.message);
+            throw new Error(`获取节点详情失败: ${error.message}`);
+        }
         console.error('获取节点详情失败:', error);
-        return null;
+        throw new Error('获取节点详情失败: 未知错误');
     }
 }
 

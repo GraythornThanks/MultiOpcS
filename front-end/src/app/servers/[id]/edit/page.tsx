@@ -1,51 +1,43 @@
+'use client';
+
 import { Metadata } from "next";
 import { ServerForm } from "../../server-form";
 import { getServer } from "@/lib/api";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
+import { useParams } from "next/navigation";
 
-type Props = {
-    params: Promise<{ id: string }>;
-};
-
-async function getServerData(id: string) {
-    const server = await getServer(parseInt(id));
-    if (!server) {
-        return null;
-    }
-    return server;
+function LoadingUI() {
+    return (
+        <div className="container mx-auto py-10">
+            <div className="space-y-6">
+                <h1 className="text-3xl font-bold tracking-tight">加载中...</h1>
+                <div className="max-w-2xl animate-pulse">
+                    <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
+                    <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
+                    <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                </div>
+            </div>
+        </div>
+    );
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-    const { id } = await params;
-    const server = await getServerData(id);
-    
-    if (!server) {
-        return {
-            title: '服务器不存在',
-            description: '找不到请求的 OPC UA 服务器',
-        };
-    }
+export default function EditServerPage() {
+    const params = useParams();
+    const id = params?.id as string;
 
-    return {
-        title: `编辑服务器 - ${server.name}`,
-        description: `编辑 OPC UA 服务器: ${server.name}`,
-    };
-}
-
-export default async function EditServerPage({ params }: Props) {
-    const { id } = await params;
-    const server = await getServerData(id);
-
-    if (!server) {
-        notFound();
+    if (!id) {
+        return notFound();
     }
 
     return (
         <div className="container mx-auto py-10">
             <div className="space-y-6">
-                <h1 className="text-3xl font-bold tracking-tight">编辑服务器 - {server.name}</h1>
+                <h1 className="text-3xl font-bold tracking-tight">编辑服务器</h1>
                 <div className="max-w-2xl">
-                    <ServerForm serverId={server.id} />
+                    <Suspense fallback={<LoadingUI />}>
+                        <ServerForm serverId={parseInt(id)} />
+                    </Suspense>
                 </div>
             </div>
         </div>
