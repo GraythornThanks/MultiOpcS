@@ -36,10 +36,3 @@ pnpm install
 pnpm dev
 ```
 
-## 开发说明
-
-Todo
-
-## 许可证
-
-Todo
